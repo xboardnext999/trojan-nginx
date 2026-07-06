@@ -63,7 +63,7 @@ unit_enabled_text() {
 show_header() {
   clear || true
   print_banner "Trojan-Go 中文管理菜单"
-  printf '当前配置: %s\n' "${RUNTIME_CONFIG_FILE}"
+  printf '当前配置文件: %s\n' "${RUNTIME_CONFIG_FILE}"
   printf '\n'
 }
 
@@ -116,6 +116,125 @@ cert_days_left() {
   printf '%s' "$(((expiry_epoch - now_epoch) / 86400))"
 }
 
+format_schedule_text() {
+  local value="$1"
+  case "${value}" in
+    daily)
+      printf '每天'
+      ;;
+    hourly)
+      printf '每小时'
+      ;;
+    weekly)
+      printf '每周'
+      ;;
+    monthly)
+      printf '每月'
+      ;;
+    *)
+      printf '%s' "${value}"
+      ;;
+  esac
+}
+
+format_duration_text() {
+  local value="$1"
+  case "${value}" in
+    *h)
+      printf '%s 小时' "${value%h}"
+      ;;
+    *m)
+      printf '%s 分钟' "${value%m}"
+      ;;
+    *s)
+      printf '%s 秒' "${value%s}"
+      ;;
+    *)
+      printf '%s' "${value}"
+      ;;
+  esac
+}
+
+format_datetime_text() {
+  local value="$1"
+  if [[ -z "${value}" || "${value}" == "n/a" || "${value}" == "0" ]]; then
+    printf '暂无记录'
+    return 0
+  fi
+
+  if date -d "${value}" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null; then
+    return 0
+  fi
+
+  printf '%s' "${value}"
+}
+
+seconds_until_text() {
+  local value="$1"
+  local target_epoch
+  local now_epoch
+  local seconds
+  local days
+  local hours
+  local minutes
+
+  if [[ -z "${value}" || "${value}" == "n/a" || "${value}" == "0" ]]; then
+    printf '未知'
+    return 0
+  fi
+
+  target_epoch=$(date -d "${value}" +%s 2>/dev/null || printf '0')
+  now_epoch=$(date +%s)
+  if [[ "${target_epoch}" == "0" || "${target_epoch}" -le "${now_epoch}" ]]; then
+    printf '即将执行或等待 systemd 调度'
+    return 0
+  fi
+
+  seconds=$((target_epoch - now_epoch))
+  days=$((seconds / 86400))
+  hours=$(((seconds % 86400) / 3600))
+  minutes=$(((seconds % 3600) / 60))
+
+  if ((days > 0)); then
+    printf '%s 天 %s 小时' "${days}" "${hours}"
+  elif ((hours > 0)); then
+    printf '%s 小时 %s 分钟' "${hours}" "${minutes}"
+  else
+    printf '%s 分钟' "${minutes}"
+  fi
+}
+
+show_certificate_expiry_summary() {
+  local domain
+  local cert_file
+  local end_date
+  local days_left
+
+  print_banner "证书到期时间"
+  while IFS= read -r domain; do
+    cert_file="/etc/letsencrypt/live/${domain}/fullchain.pem"
+    printf '域名: %s\n' "${domain}"
+
+    if [[ ! -s "${cert_file}" ]]; then
+      print_warn "未找到证书文件: ${cert_file}"
+      printf '\n'
+      continue
+    fi
+
+    end_date=$(openssl x509 -noout -enddate -in "${cert_file}" | sed 's/^notAfter=//')
+    days_left=$(cert_days_left "${end_date}")
+    printf '到期时间: %s\n' "$(format_datetime_text "${end_date}")"
+    printf '剩余天数: %s 天\n' "${days_left}"
+
+    if openssl x509 -checkend 2592000 -noout -in "${cert_file}" >/dev/null 2>&1; then
+      print_success "状态: 正常，超过 30 天"
+    else
+      print_warn "状态: 即将过期，建议手动续期"
+    fi
+    printf '\n'
+  done < <(unique_domains)
+}
+
 show_certificate_info() {
   show_header
   print_banner "证书日期"
@@ -160,21 +279,29 @@ show_renew_status() {
   print_banner "自动续订状态"
   local timer_unit
   local service_unit
+  local next_elapse
+  local last_trigger
 
   timer_unit=$(basename "${RENEW_TIMER_FILE}")
   service_unit=$(basename "${RENEW_SERVICE_FILE}")
+  next_elapse=$(systemctl show "${timer_unit}" --property=NextElapseUSecRealtime --value 2>/dev/null || true)
+  last_trigger=$(systemctl show "${timer_unit}" --property=LastTriggerUSec --value 2>/dev/null || true)
 
-  printf '续订 Timer: %s\n' "${timer_unit}"
-  printf 'Timer 状态: '
+  printf '自动续订定时器: %s\n' "${timer_unit}"
+  printf '定时器状态: '
   unit_active_text "${timer_unit}"
   printf '开机自启: '
   unit_enabled_text "${timer_unit}"
-  printf '续订 Service: %s\n' "${service_unit}"
+  printf '续订服务: %s\n' "${service_unit}"
   printf '续订脚本: %s/renew.sh\n' "${INSTALL_ROOT}"
-  printf '续订频率: %s\n' "${RENEW_TIMER_CALENDAR}"
-  printf '随机延迟: %s\n' "${RENEW_RANDOM_DELAY}"
+  printf '续订频率: %s\n' "$(format_schedule_text "${RENEW_TIMER_CALENDAR}")"
+  printf '随机延迟: %s\n' "$(format_duration_text "${RENEW_RANDOM_DELAY}")"
+  printf '下次续订时间: %s\n' "$(format_datetime_text "${next_elapse}")"
+  printf '距离下次续订: %s\n' "$(seconds_until_text "${next_elapse}")"
+  printf '上次触发时间: %s\n' "$(format_datetime_text "${last_trigger}")"
   printf '\n'
-  systemctl list-timers --all "${timer_unit}" --no-pager || true
+  show_certificate_expiry_summary
+  printf '\n'
   pause_menu
 }
 
