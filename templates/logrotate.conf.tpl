@@ -1,0 +1,9 @@
+${LOG_DIR}/*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
