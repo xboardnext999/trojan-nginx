@@ -1,0 +1,340 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+resolve_script_dir() {
+  local source="${BASH_SOURCE[0]}"
+  local dir
+
+  while [[ -L "${source}" ]]; do
+    dir=$(cd -P -- "$(dirname -- "${source}")" && pwd)
+    source=$(readlink "${source}")
+    [[ "${source}" == /* ]] || source="${dir}/${source}"
+  done
+
+  cd -P -- "$(dirname -- "${source}")" && pwd
+}
+
+SCRIPT_DIR=$(resolve_script_dir)
+# shellcheck source=lib/common.sh
+source "${SCRIPT_DIR}/lib/common.sh"
+# shellcheck source=lib/client.sh
+source "${SCRIPT_DIR}/lib/client.sh"
+
+elevate_if_needed() {
+  if [[ "${EUID}" -eq 0 ]]; then
+    return 0
+  fi
+
+  if command_exists sudo; then
+    exec sudo -E "${SCRIPT_DIR}/trojan" "$@"
+  fi
+
+  die "需要 root 权限运行，请切换到 root 后执行 trojan"
+}
+
+pause_menu() {
+  printf '\n'
+  read -r -p "按回车键返回菜单..." _
+}
+
+ensure_loaded() {
+  load_config
+  require_runtime_config
+}
+
+unit_active_text() {
+  local unit="$1"
+  if systemctl is-active --quiet "${unit}"; then
+    green "运行中"
+  else
+    red "未运行"
+  fi
+}
+
+unit_enabled_text() {
+  local unit="$1"
+  if systemctl is-enabled --quiet "${unit}" 2>/dev/null; then
+    green "已开机自启"
+  else
+    yellow "未开机自启"
+  fi
+}
+
+show_header() {
+  clear || true
+  print_banner "Trojan-Go 中文管理菜单"
+  printf '当前配置: %s\n' "${RUNTIME_CONFIG_FILE}"
+  printf '\n'
+}
+
+show_config_info() {
+  show_header
+  print_banner "生成的配置信息"
+  printf 'Trojan 域名: %s\n' "${TROJAN_DOMAIN}"
+  printf '公网端口: 443\n'
+  printf 'Trojan 后端端口: %s\n' "${TROJAN_PORT}"
+  printf 'Trojan 密码: %s\n' "${TROJAN_PASSWORD}"
+  printf 'SNI: %s\n' "${TROJAN_DOMAIN}"
+  printf '伪装网站域名: %s\n' "${WEB_DOMAIN}"
+  printf '伪装网站本地 HTTPS 端口: %s\n' "${WEB_PORT}"
+  printf 'Trojan-Go fallback 地址: %s:%s\n' "${TROJAN_REMOTE_ADDR}" "${TROJAN_REMOTE_PORT}"
+  printf 'IPv6: %s\n' "${ENABLE_IPV6}"
+
+  if [[ "${SAME_DOMAIN_MODE}" == "1" ]]; then
+    printf '部署模式: 同域伪装\n'
+  else
+    printf '部署模式: 双域 SNI 分流\n'
+  fi
+
+  printf '\n'
+  printf 'Trojan-Go 配置: %s\n' "${TROJAN_CONFIG_FILE}"
+  printf 'Nginx HTTP 配置: %s\n' "${NGINX_HTTP_CONF}"
+  printf 'Nginx Stream 配置: %s\n' "${NGINX_STREAM_CONF}"
+  printf '伪装网站目录: %s\n' "${WEB_ROOT}"
+  printf '运行配置文件: %s\n' "${RUNTIME_CONFIG_FILE}"
+  printf '日志目录: %s\n' "${LOG_DIR}"
+  printf '备份目录: %s\n' "${BACKUP_ROOT}"
+  printf '\n'
+  printf '客户端链接文件: %s\n' "${CLIENT_URI_FILE}"
+  printf '二维码 PNG: %s\n' "${CLIENT_QR_PNG}"
+  printf '二维码文本: %s\n' "${CLIENT_QR_TXT}"
+  pause_menu
+}
+
+cert_days_left() {
+  local not_after="$1"
+  local expiry_epoch
+  local now_epoch
+
+  expiry_epoch=$(date -d "${not_after}" +%s 2>/dev/null || printf '0')
+  now_epoch=$(date +%s)
+  if [[ "${expiry_epoch}" == "0" ]]; then
+    printf '未知'
+    return 0
+  fi
+
+  printf '%s' "$(((expiry_epoch - now_epoch) / 86400))"
+}
+
+show_certificate_info() {
+  show_header
+  print_banner "证书日期"
+  local domain
+  local cert_file
+  local start_date
+  local end_date
+  local days_left
+
+  while IFS= read -r domain; do
+    cert_file="/etc/letsencrypt/live/${domain}/fullchain.pem"
+    printf '域名: %s\n' "${domain}"
+    printf '证书文件: %s\n' "${cert_file}"
+
+    if [[ ! -s "${cert_file}" ]]; then
+      print_warn "未找到证书文件"
+      printf '\n'
+      continue
+    fi
+
+    start_date=$(openssl x509 -noout -startdate -in "${cert_file}" | sed 's/^notBefore=//')
+    end_date=$(openssl x509 -noout -enddate -in "${cert_file}" | sed 's/^notAfter=//')
+    days_left=$(cert_days_left "${end_date}")
+
+    printf '生效时间: %s\n' "${start_date}"
+    printf '到期时间: %s\n' "${end_date}"
+    printf '剩余天数: %s 天\n' "${days_left}"
+
+    if openssl x509 -checkend 2592000 -noout -in "${cert_file}" >/dev/null 2>&1; then
+      print_success "证书有效期超过 30 天"
+    else
+      print_warn "证书将在 30 天内过期，建议执行手动续期"
+    fi
+    printf '\n'
+  done < <(unique_domains)
+
+  pause_menu
+}
+
+show_renew_status() {
+  show_header
+  print_banner "自动续订状态"
+  local timer_unit
+  local service_unit
+
+  timer_unit=$(basename "${RENEW_TIMER_FILE}")
+  service_unit=$(basename "${RENEW_SERVICE_FILE}")
+
+  printf '续订 Timer: %s\n' "${timer_unit}"
+  printf 'Timer 状态: '
+  unit_active_text "${timer_unit}"
+  printf '开机自启: '
+  unit_enabled_text "${timer_unit}"
+  printf '续订 Service: %s\n' "${service_unit}"
+  printf '续订脚本: %s/renew.sh\n' "${INSTALL_ROOT}"
+  printf '续订频率: %s\n' "${RENEW_TIMER_CALENDAR}"
+  printf '随机延迟: %s\n' "${RENEW_RANDOM_DELAY}"
+  printf '\n'
+  systemctl list-timers --all "${timer_unit}" --no-pager || true
+  pause_menu
+}
+
+show_service_status() {
+  show_header
+  print_banner "服务状态"
+  local units=("trojan-go" "nginx" "$(basename "${RENEW_TIMER_FILE}")")
+  local unit
+
+  for unit in "${units[@]}"; do
+    printf '%s: ' "${unit}"
+    unit_active_text "${unit}"
+    printf '  '
+    unit_enabled_text "${unit}"
+  done
+
+  printf '\n监听端口:\n'
+  ss -ltnp 2>/dev/null | grep -E ':(80|443|'"${TROJAN_PORT}"'|'"${WEB_PORT}"'|'"${TROJAN_REMOTE_PORT}"')[[:space:]]' || true
+  pause_menu
+}
+
+show_client_qr() {
+  show_header
+  print_banner "客户端链接和二维码"
+
+  if [[ ! -s "${CLIENT_URI_FILE}" || ! -s "${CLIENT_QR_TXT}" ]]; then
+    if command_exists qrencode; then
+      generate_client_artifacts
+    else
+      print_warn "缺少 qrencode，无法生成二维码。请重新执行 install.sh 安装依赖。"
+    fi
+  fi
+
+  if [[ -s "${CLIENT_URI_FILE}" ]]; then
+    printf '客户端链接:\n'
+    cat "${CLIENT_URI_FILE}"
+    printf '\n\n'
+  fi
+
+  if [[ -s "${CLIENT_QR_TXT}" ]]; then
+    cat "${CLIENT_QR_TXT}"
+    printf '\n'
+  fi
+
+  printf '二维码 PNG: %s\n' "${CLIENT_QR_PNG}"
+  printf '二维码文本: %s\n' "${CLIENT_QR_TXT}"
+  pause_menu
+}
+
+manual_renew() {
+  show_header
+  print_banner "手动续期证书"
+  bash "${INSTALL_ROOT}/renew.sh"
+  pause_menu
+}
+
+manual_update() {
+  show_header
+  print_banner "升级 Trojan-Go"
+  bash "${INSTALL_ROOT}/update.sh"
+  pause_menu
+}
+
+restart_services() {
+  show_header
+  print_banner "重启服务"
+  if ! nginx -t; then
+    print_error "Nginx 配置检测失败，已取消重启"
+    pause_menu
+    return 0
+  fi
+
+  if ! systemctl restart nginx; then
+    print_error "Nginx 重启失败"
+  else
+    print_success "Nginx 已重启"
+  fi
+
+  if ! systemctl restart trojan-go; then
+    print_error "Trojan-Go 重启失败"
+    systemctl status trojan-go --no-pager -l || true
+    journalctl -u trojan-go -n 80 --no-pager -l || true
+  else
+    print_success "Trojan-Go 已重启"
+  fi
+  pause_menu
+}
+
+show_logs() {
+  show_header
+  print_banner "最近日志"
+  printf 'Trojan-Go systemd 日志:\n'
+  journalctl -u trojan-go -n 80 --no-pager -l || true
+  printf '\nNginx systemd 日志:\n'
+  journalctl -u nginx -n 50 --no-pager -l || true
+  printf '\n安装器日志目录: %s\n' "${LOG_DIR}"
+  pause_menu
+}
+
+regenerate_qr() {
+  show_header
+  print_banner "重新生成二维码"
+  if ! command_exists qrencode; then
+    print_error "缺少 qrencode，请先执行 install.sh 安装依赖"
+    pause_menu
+    return 0
+  fi
+  generate_client_artifacts
+  pause_menu
+}
+
+run_uninstall() {
+  show_header
+  print_banner "卸载"
+  bash "${INSTALL_ROOT}/uninstall.sh"
+}
+
+show_menu() {
+  show_header
+  cat <<MENU
+1. 查看生成的配置信息
+2. 查看证书日期
+3. 查看自动续订状态
+4. 查看服务状态
+5. 查看客户端链接和二维码
+6. 手动续期证书
+7. 升级 Trojan-Go
+8. 重启 Nginx 和 Trojan-Go
+9. 查看最近日志
+10. 重新生成二维码
+11. 卸载
+0. 退出
+
+MENU
+}
+
+main() {
+  elevate_if_needed "$@"
+  ensure_loaded
+
+  local choice
+  while true; do
+    show_menu
+    read -r -p "请输入选项编号: " choice
+    case "${choice}" in
+      1) show_config_info ;;
+      2) show_certificate_info ;;
+      3) show_renew_status ;;
+      4) show_service_status ;;
+      5) show_client_qr ;;
+      6) manual_renew ;;
+      7) manual_update ;;
+      8) restart_services ;;
+      9) show_logs ;;
+      10) regenerate_qr ;;
+      11) run_uninstall; exit 0 ;;
+      0) exit 0 ;;
+      *) print_warn "无效选项: ${choice}"; sleep 1 ;;
+    esac
+  done
+}
+
+main "$@"

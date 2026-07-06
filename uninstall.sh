@@ -78,6 +78,7 @@ backup_uninstall_targets() {
   backup_path "${WEB_ROOT}"
   backup_path "${LOG_DIR}"
   backup_path "${TROJAN_BIN}"
+  backup_path "${TROJAN_CLI_LINK}"
 }
 
 remove_path() {
@@ -114,6 +115,7 @@ main() {
   remove_path "${RENEW_SERVICE_FILE}"
   remove_path "${RENEW_TIMER_FILE}"
   remove_path "${LOGROTATE_FILE}"
+  remove_path "${TROJAN_CLI_LINK}"
 
   if [[ "${PURGE}" == "1" ]]; then
     remove_path "${RUNTIME_DIR}"

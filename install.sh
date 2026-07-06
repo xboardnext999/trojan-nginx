@@ -72,12 +72,15 @@ persist_and_install_project() {
     find "${PROJECT_DIR}" -mindepth 1 -maxdepth 1 \
       ! -name ".git" \
       ! -name ".DS_Store" \
+      ! -name "work" \
       -exec cp -a {} "${INSTALL_ROOT}/" \;
   fi
 
   chmod 600 "${RUNTIME_CONFIG_FILE}"
   chmod +x "${INSTALL_ROOT}/install.sh" "${INSTALL_ROOT}/uninstall.sh" \
-    "${INSTALL_ROOT}/update.sh" "${INSTALL_ROOT}/renew.sh"
+    "${INSTALL_ROOT}/update.sh" "${INSTALL_ROOT}/renew.sh" \
+    "${INSTALL_ROOT}/trojan"
+  ln -sf "${INSTALL_ROOT}/trojan" "${TROJAN_CLI_LINK}"
   print_success "运行配置和项目文件已写入"
 }
 
@@ -98,6 +101,7 @@ prepare_managed_paths() {
   backup_path "/etc/nginx/sites-enabled/default"
   backup_path "/etc/nginx/conf.d/default.conf"
   backup_path "${TROJAN_BIN}"
+  backup_path "${TROJAN_CLI_LINK}"
 
   install -d -m 755 "${TROJAN_CONFIG_DIR}"
   install -d -m 755 "${WEB_ROOT}"

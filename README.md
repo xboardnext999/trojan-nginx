@@ -19,6 +19,7 @@ Production-oriented Trojan-Go deployment project for Ubuntu and Debian servers. 
 ├── uninstall.sh
 ├── update.sh
 ├── renew.sh
+├── trojan
 ├── lib/
 │   ├── backup.sh
 │   ├── certbot.sh
@@ -59,6 +60,7 @@ Production-oriented Trojan-Go deployment project for Ubuntu and Debian servers. 
 - Backups under `/var/backups/trojan-go-sni`.
 - Runtime configuration under `/etc/trojan-go-sni/config.env`.
 - Client URI and QR code under `/etc/trojan-go-sni`.
+- 中文管理菜单命令 `/usr/local/bin/trojan`。
 
 ## Install
 
@@ -77,6 +79,30 @@ The installer prompts for:
 - IPv6 enablement, `Y` or `N`
 
 The installer validates DNS before requesting certificates. For IPv4, each unique domain must have an `A` record pointing to the server public IPv4. When IPv6 is enabled, each unique domain must also have an `AAAA` record pointing to the server public IPv6.
+
+## 中文管理菜单
+
+安装完成后执行：
+
+```bash
+trojan
+```
+
+进入菜单后只需要输入数字，例如 `1`、`2`、`3`，不需要记其它命令。
+
+菜单功能：
+
+- 查看生成的配置信息
+- 查看证书生效时间、到期时间、剩余天数
+- 查看自动续订是否开启
+- 查看 Trojan-Go、Nginx、自动续订服务状态
+- 查看客户端链接和二维码
+- 手动续期证书
+- 升级 Trojan-Go
+- 重启 Nginx 和 Trojan-Go
+- 查看最近日志
+- 重新生成二维码
+- 卸载部署
 
 ## Same-Domain Camouflage
 
