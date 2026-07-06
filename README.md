@@ -19,6 +19,7 @@ Production-oriented Trojan-Go deployment project for Ubuntu and Debian servers. 
 ├── uninstall.sh
 ├── update.sh
 ├── renew.sh
+├── setup-menu.sh
 ├── trojan
 ├── lib/
 │   ├── backup.sh
@@ -103,6 +104,14 @@ trojan
 - 查看最近日志
 - 重新生成二维码
 - 卸载部署
+
+如果你已经安装过旧版本，只想补上中文菜单，不想重新安装，执行：
+
+```bash
+git pull
+sudo bash setup-menu.sh
+trojan
+```
 
 ## Same-Domain Camouflage
 

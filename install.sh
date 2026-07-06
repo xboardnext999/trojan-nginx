@@ -35,7 +35,7 @@ prompt_install_config() {
   prompt_with_default TROJAN_PORT "请输入 Trojan 后端监听端口" "${TROJAN_PORT:-8080}"
   validate_port_or_die "${TROJAN_PORT}" "Trojan 后端监听端口"
 
-  prompt_secret_or_generate TROJAN_PASSWORD "请输入 Trojan 密码，留空自动生成"
+  prompt_secret_or_generate TROJAN_PASSWORD "请输入 Trojan 密码，留空沿用已有密码或自动生成"
   validate_password_or_die "${TROJAN_PASSWORD}"
 
   prompt_with_default WEB_DOMAIN "请输入伪装网站域名" "${WEB_DOMAIN:-${TROJAN_DOMAIN}}"
@@ -79,7 +79,7 @@ persist_and_install_project() {
   chmod 600 "${RUNTIME_CONFIG_FILE}"
   chmod +x "${INSTALL_ROOT}/install.sh" "${INSTALL_ROOT}/uninstall.sh" \
     "${INSTALL_ROOT}/update.sh" "${INSTALL_ROOT}/renew.sh" \
-    "${INSTALL_ROOT}/trojan"
+    "${INSTALL_ROOT}/setup-menu.sh" "${INSTALL_ROOT}/trojan"
   ln -sf "${INSTALL_ROOT}/trojan" "${TROJAN_CLI_LINK}"
   print_success "运行配置和项目文件已写入"
 }

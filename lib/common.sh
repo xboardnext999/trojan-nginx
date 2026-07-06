@@ -214,11 +214,20 @@ prompt_secret_or_generate() {
     return 0
   fi
 
-  read -r -s -p "${prompt}: " input
+  if [[ -n "${current_value}" ]]; then
+    read -r -s -p "${prompt}，留空沿用当前密码: " input
+  else
+    read -r -s -p "${prompt}: " input
+  fi
   printf '\n'
   if [[ -z "${input}" ]]; then
-    input=$(random_password)
-    print_info "已自动生成 Trojan 密码"
+    if [[ -n "${current_value}" ]]; then
+      input="${current_value}"
+      print_info "已沿用当前 Trojan 密码"
+    else
+      input=$(random_password)
+      print_info "已自动生成 Trojan 密码"
+    fi
   fi
   printf -v "${var_name}" '%s' "${input}"
 }
