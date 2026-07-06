@@ -13,6 +13,8 @@
     "sni": "${TROJAN_DOMAIN}",
     "alpn": [
       "http/1.1"
-    ]
+    ],
+    "fallback_addr": "${TROJAN_REMOTE_ADDR}",
+    "fallback_port": ${TROJAN_REMOTE_PORT}
   }
 }

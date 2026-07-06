@@ -36,17 +36,18 @@ prompt_install_config() {
   prompt_secret_or_generate TROJAN_PASSWORD "请输入 Trojan 密码，留空自动生成"
   validate_password_or_die "${TROJAN_PASSWORD}"
 
-  prompt_required WEB_DOMAIN "请输入伪装网站域名"
+  prompt_with_default WEB_DOMAIN "请输入伪装网站域名" "${WEB_DOMAIN:-${TROJAN_DOMAIN}}"
   validate_domain_or_die "${WEB_DOMAIN}" "伪装网站域名"
-
-  if [[ "${TROJAN_DOMAIN}" == "${WEB_DOMAIN}" ]]; then
-    die "Trojan 域名和伪装网站域名不能相同，SNI 分流需要两个不同域名"
-  fi
 
   prompt_yes_no ENABLE_IPV6 "是否开启 IPv6" "${ENABLE_IPV6:-N}"
   ENABLE_IPV6=$(normalize_yes_no "${ENABLE_IPV6}")
 
   derive_config
+  if [[ "${SAME_DOMAIN_MODE}" == "1" ]]; then
+    print_info "已启用同域模式: Trojan 和伪装网站共用 ${TROJAN_DOMAIN}"
+  else
+    print_info "已启用双域 SNI 分流模式"
+  fi
   print_success "安装参数已确认"
 }
 

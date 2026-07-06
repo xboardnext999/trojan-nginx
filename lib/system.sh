@@ -94,8 +94,16 @@ validate_port_plan() {
     die "伪装网站本地 HTTPS 端口不能使用外部端口 80 或 443"
   fi
 
+  if [[ "${TROJAN_REMOTE_PORT}" == "80" || "${TROJAN_REMOTE_PORT}" == "443" ]]; then
+    die "Trojan-Go fallback 端口不能使用外部端口 80 或 443，建议使用 8081"
+  fi
+
   if [[ "${TROJAN_PORT}" == "${WEB_PORT}" ]]; then
     die "Trojan 后端监听端口不能与伪装网站本地 HTTPS 端口相同"
+  fi
+
+  if [[ "${TROJAN_PORT}" == "${TROJAN_REMOTE_PORT}" || "${WEB_PORT}" == "${TROJAN_REMOTE_PORT}" ]]; then
+    die "Trojan 后端端口、网站 HTTPS 端口和 fallback 网站端口必须互不相同"
   fi
 }
 
@@ -144,6 +152,7 @@ check_required_ports_before_install() {
   assert_port_usable "443" "nginx"
   assert_port_usable "${TROJAN_PORT}" "trojan-go"
   assert_port_usable "${WEB_PORT}" "nginx"
+  assert_port_usable "${TROJAN_REMOTE_PORT}" "nginx"
   print_success "端口检测通过"
 }
 

@@ -46,6 +46,8 @@ Production-oriented Trojan-Go deployment project for Ubuntu and Debian servers. 
 - Nginx `ssl_preread` SNI routing on external port `443`.
 - Trojan SNI routed to `127.0.0.1:${TROJAN_PORT}`.
 - Website SNI and default SNI routed to `127.0.0.1:8443`.
+- Same-domain camouflage mode by default: the website domain can be the same as the Trojan SNI domain.
+- Trojan-Go fallback routed to the local static site on `127.0.0.1:${TROJAN_REMOTE_PORT}`.
 - External HTTP port `80` redirecting to HTTPS.
 - Trojan-Go TLS TCP server with `ALPN=http/1.1`.
 - Let's Encrypt certificates for both Trojan and website domains.
@@ -69,10 +71,31 @@ The installer prompts for:
 - Trojan domain
 - Trojan backend port, default `8080`
 - Trojan password, empty input generates a random password
-- Camouflage website domain
+- Camouflage website domain, defaulting to the Trojan domain
 - IPv6 enablement, `Y` or `N`
 
-The installer validates DNS before requesting certificates. For IPv4, each domain must have an `A` record pointing to the server public IPv4. When IPv6 is enabled, each domain must also have an `AAAA` record pointing to the server public IPv6.
+The installer validates DNS before requesting certificates. For IPv4, each unique domain must have an `A` record pointing to the server public IPv4. When IPv6 is enabled, each unique domain must also have an `AAAA` record pointing to the server public IPv6.
+
+## Same-Domain Camouflage
+
+The recommended deployment is to use the same domain for Trojan and the camouflage website:
+
+```text
+Trojan domain: example.com
+Camouflage website domain: example.com
+```
+
+With the same domain, Nginx cannot split one identical SNI value into two different backends. The generated configuration routes that SNI to Trojan-Go. Normal browser HTTPS requests are then handled by Trojan-Go fallback and served by the local static website on `127.0.0.1:8081`.
+
+The generated camouflage site is:
+
+- HTML5
+- CSS3
+- responsive
+- minimalist
+- normal website style
+- no CDN
+- all resources local or inline
 
 ## Renew Certificates
 

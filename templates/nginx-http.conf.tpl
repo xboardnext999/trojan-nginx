@@ -10,7 +10,7 @@ ${NGINX_HTTP_IPV6_LISTEN}
 
 server {
     listen 127.0.0.1:${WEB_PORT} ssl http2;
-    server_name ${WEB_DOMAIN};
+    server_name ${NGINX_SITE_SERVER_NAMES};
 
     ssl_certificate ${WEB_CERT_FULLCHAIN};
     ssl_certificate_key ${WEB_CERT_PRIVKEY};
@@ -23,6 +23,21 @@ server {
 
     access_log /var/log/nginx/trojan-go-sni-site-access.log;
     error_log /var/log/nginx/trojan-go-sni-site-error.log warn;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+
+server {
+    listen 127.0.0.1:${TROJAN_REMOTE_PORT};
+    server_name ${NGINX_SITE_SERVER_NAMES};
+
+    root ${WEB_ROOT};
+    index index.html;
+
+    access_log /var/log/nginx/trojan-go-sni-fallback-access.log;
+    error_log /var/log/nginx/trojan-go-sni-fallback-error.log warn;
 
     location / {
         try_files $uri $uri/ /index.html;

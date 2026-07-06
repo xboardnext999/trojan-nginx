@@ -1,8 +1,7 @@
 # Managed by trojan-go-sni.
 
 map $ssl_preread_server_name $backend_name {
-    ${TROJAN_DOMAIN} trojan_backend;
-    ${WEB_DOMAIN} web_backend;
+${NGINX_STREAM_MAP_ENTRIES}
     default web_backend;
 }
 

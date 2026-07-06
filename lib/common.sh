@@ -60,7 +60,7 @@ derive_config() {
   PROJECT_DISPLAY_NAME="${PROJECT_DISPLAY_NAME:-Trojan-Go SNI}"
   TROJAN_PORT="${TROJAN_PORT:-8080}"
   TROJAN_REMOTE_ADDR="${TROJAN_REMOTE_ADDR:-127.0.0.1}"
-  TROJAN_REMOTE_PORT="${TROJAN_REMOTE_PORT:-80}"
+  TROJAN_REMOTE_PORT="${TROJAN_REMOTE_PORT:-8081}"
   WEB_PORT="${WEB_PORT:-8443}"
   ENABLE_IPV6=$(normalize_yes_no "${ENABLE_IPV6:-N}")
   CERTBOT_EMAIL="${CERTBOT_EMAIL:-}"
@@ -93,6 +93,23 @@ derive_config() {
   TROJAN_CERT_PRIVKEY="/etc/letsencrypt/live/${TROJAN_DOMAIN:-}/privkey.pem"
   WEB_CERT_FULLCHAIN="/etc/letsencrypt/live/${WEB_DOMAIN:-}/fullchain.pem"
   WEB_CERT_PRIVKEY="/etc/letsencrypt/live/${WEB_DOMAIN:-}/privkey.pem"
+
+  SAME_DOMAIN_MODE="0"
+  if [[ -n "${TROJAN_DOMAIN:-}" && "${TROJAN_DOMAIN:-}" == "${WEB_DOMAIN:-}" ]]; then
+    SAME_DOMAIN_MODE="1"
+  fi
+
+  NGINX_SITE_SERVER_NAMES="${WEB_DOMAIN:-_}"
+  NGINX_STREAM_MAP_ENTRIES=""
+  if [[ -n "${TROJAN_DOMAIN:-}" && -n "${WEB_DOMAIN:-}" ]]; then
+    if [[ "${SAME_DOMAIN_MODE}" == "1" ]]; then
+      NGINX_SITE_SERVER_NAMES="${TROJAN_DOMAIN}"
+      NGINX_STREAM_MAP_ENTRIES="    ${TROJAN_DOMAIN} trojan_backend;"
+    else
+      NGINX_SITE_SERVER_NAMES="${WEB_DOMAIN} ${TROJAN_DOMAIN}"
+      NGINX_STREAM_MAP_ENTRIES="    ${TROJAN_DOMAIN} trojan_backend;"$'\n'"    ${WEB_DOMAIN} web_backend;"
+    fi
+  fi
 
   NGINX_HTTP_IPV6_LISTEN=""
   NGINX_STREAM_IPV6_LISTEN=""
@@ -336,6 +353,11 @@ print_install_summary() {
   printf '证书路径: %s\n' "${TROJAN_CERT_FULLCHAIN}"
   printf '私钥路径: %s\n' "${TROJAN_CERT_PRIVKEY}"
   printf '伪装站: https://%s\n' "${WEB_DOMAIN}"
+  if [[ "${SAME_DOMAIN_MODE}" == "1" ]]; then
+    printf '部署模式: 同域伪装，普通浏览器访问通过 Trojan-Go fallback 到本地静态站\n'
+  else
+    printf '部署模式: 双域 SNI 分流\n'
+  fi
   printf '运行配置: %s\n' "${RUNTIME_CONFIG_FILE}"
   printf '日志目录: %s\n' "${LOG_DIR}"
   printf '\n客户端配置示例:\n'
