@@ -22,6 +22,7 @@ Production-oriented Trojan-Go deployment project for Ubuntu and Debian servers. 
 ├── lib/
 │   ├── backup.sh
 │   ├── certbot.sh
+│   ├── client.sh
 │   ├── common.sh
 │   ├── nginx.sh
 │   ├── system.sh
@@ -57,6 +58,7 @@ Production-oriented Trojan-Go deployment project for Ubuntu and Debian servers. 
 - Log files under `/var/log/trojan-go-sni`.
 - Backups under `/var/backups/trojan-go-sni`.
 - Runtime configuration under `/etc/trojan-go-sni/config.env`.
+- Client URI and QR code under `/etc/trojan-go-sni`.
 
 ## Install
 
@@ -149,11 +151,20 @@ After installation, the script prints:
 - SNI
 - Certificate path
 - Client configuration example
+- Terminal QR code
 
 The same values are stored in:
 
 ```bash
 /etc/trojan-go-sni/config.env
+```
+
+The generated client link and QR code files are:
+
+```bash
+/etc/trojan-go-sni/client.uri
+/etc/trojan-go-sni/client-qr.png
+/etc/trojan-go-sni/client-qr.txt
 ```
 
 ## Recovery

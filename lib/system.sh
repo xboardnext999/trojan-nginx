@@ -69,6 +69,8 @@ install_packages() {
     libnginx-mod-stream \
     nginx \
     openssl \
+    python3 \
+    qrencode \
     unzip \
     wget
   print_success "系统依赖已安装"

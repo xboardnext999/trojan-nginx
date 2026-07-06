@@ -16,6 +16,8 @@ source "${SCRIPT_DIR}/lib/certbot.sh"
 source "${SCRIPT_DIR}/lib/nginx.sh"
 # shellcheck source=lib/trojan.sh
 source "${SCRIPT_DIR}/lib/trojan.sh"
+# shellcheck source=lib/client.sh
+source "${SCRIPT_DIR}/lib/client.sh"
 
 rollback_on_error() {
   restore_backup
@@ -140,15 +142,17 @@ main() {
 
   print_step "启动并设置开机启动"
   systemctl daemon-reload
-  systemctl enable --now trojan-go
   nginx -t
-  systemctl enable --now nginx
+  systemctl enable nginx
   systemctl restart nginx
+  systemctl enable trojan-go
+  systemctl restart trojan-go
   systemctl enable --now trojan-go-sni-renew.timer
   assert_service_active "trojan-go"
   assert_service_active "nginx"
   assert_service_active "trojan-go-sni-renew.timer"
   print_success "服务已启动并设置开机启动"
+  generate_client_artifacts
 
   trap - ERR
   print_install_summary

@@ -86,6 +86,12 @@ derive_config() {
   LOG_DIR="${LOG_DIR:-/var/log/${PROJECT_NAME}}"
   LOGROTATE_FILE="${LOGROTATE_FILE:-/etc/logrotate.d/${PROJECT_NAME}}"
   BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/${PROJECT_NAME}}"
+  if [[ -z "${CLIENT_NAME:-}" || "${CLIENT_NAME:-}" == "Trojan-Go SNI" ]]; then
+    CLIENT_NAME="${TROJAN_DOMAIN:-Trojan-Go SNI}"
+  fi
+  CLIENT_URI_FILE="${CLIENT_URI_FILE:-${RUNTIME_DIR}/client.uri}"
+  CLIENT_QR_PNG="${CLIENT_QR_PNG:-${RUNTIME_DIR}/client-qr.png}"
+  CLIENT_QR_TXT="${CLIENT_QR_TXT:-${RUNTIME_DIR}/client-qr.txt}"
   NON_INTERACTIVE="${NON_INTERACTIVE:-0}"
   ASSUME_YES="${ASSUME_YES:-0}"
 
@@ -311,6 +317,10 @@ write_runtime_config() {
     write_env_value "LOG_DIR" "${LOG_DIR}"
     write_env_value "LOGROTATE_FILE" "${LOGROTATE_FILE}"
     write_env_value "BACKUP_ROOT" "${BACKUP_ROOT}"
+    write_env_value "CLIENT_NAME" "${CLIENT_NAME}"
+    write_env_value "CLIENT_URI_FILE" "${CLIENT_URI_FILE}"
+    write_env_value "CLIENT_QR_PNG" "${CLIENT_QR_PNG}"
+    write_env_value "CLIENT_QR_TXT" "${CLIENT_QR_TXT}"
   } > "${tmp}"
 
   install -m 600 -D "${tmp}" "${target}"
@@ -326,8 +336,17 @@ unique_domains() {
 
 assert_service_active() {
   local service="$1"
-  systemctl is-active --quiet "${service}"
-  print_success "服务运行正常: ${service}"
+  if systemctl is-active --quiet "${service}"; then
+    print_success "服务运行正常: ${service}"
+    return 0
+  fi
+
+  print_error "服务未运行: ${service}"
+  print_info "systemctl status ${service}:"
+  systemctl status "${service}" --no-pager -l || true
+  print_info "journalctl -u ${service} 最近日志:"
+  journalctl -u "${service}" -n 80 --no-pager -l || true
+  return 1
 }
 
 stop_service_if_exists() {
@@ -360,6 +379,9 @@ print_install_summary() {
   fi
   printf '运行配置: %s\n' "${RUNTIME_CONFIG_FILE}"
   printf '日志目录: %s\n' "${LOG_DIR}"
+  printf '客户端链接: %s\n' "${CLIENT_URI_FILE}"
+  printf '二维码 PNG: %s\n' "${CLIENT_QR_PNG}"
+  printf '二维码文本: %s\n' "${CLIENT_QR_TXT}"
   printf '\n客户端配置示例:\n'
   printf '  类型: Trojan-Go\n'
   printf '  地址: %s\n' "${TROJAN_DOMAIN}"
