@@ -63,6 +63,7 @@ install_packages() {
     ca-certificates \
     certbot \
     curl \
+    dnsutils \
     gettext-base \
     iproute2 \
     libnginx-mod-stream \
@@ -166,19 +167,46 @@ fetch_public_ipv6() {
 
 resolve_ipv4() {
   local domain="$1"
-  getent ahostsv4 "${domain}" | awk '{print $1}' | awk '!seen[$0]++'
+  if command_exists dig; then
+    dig +short A "${domain}" | awk '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && !seen[$0]++ {print}'
+  else
+    getent ahostsv4 "${domain}" | awk '{print $1}' | awk '!seen[$0]++'
+  fi
 }
 
 resolve_ipv6() {
   local domain="$1"
-  getent ahostsv6 "${domain}" | awk '{print $1}' | awk '!seen[$0]++'
+  if command_exists dig; then
+    dig +short AAAA "${domain}" | awk 'index($0, ":") > 0 && tolower($0) !~ /^::ffff:/ && !seen[tolower($0)]++ {print}'
+  else
+    getent ahostsv6 "${domain}" | awk 'index($1, ":") > 0 && tolower($1) !~ /^::ffff:/ {print $1}' | awk '!seen[tolower($0)]++'
+  fi
+}
+
+normalize_ip() {
+  local ip="$1"
+  if command_exists python3; then
+    python3 - "$ip" <<'PY'
+import ipaddress
+import sys
+
+print(ipaddress.ip_address(sys.argv[1]).compressed)
+PY
+  else
+    printf '%s\n' "${ip,,}"
+  fi
 }
 
 ip_in_list() {
   local needle="$1"
   local candidate
+  local normalized_needle
+  local normalized_candidate
+
+  normalized_needle=$(normalize_ip "${needle}")
   while IFS= read -r candidate; do
-    if [[ "${candidate}" == "${needle}" ]]; then
+    normalized_candidate=$(normalize_ip "${candidate}")
+    if [[ "${normalized_candidate}" == "${normalized_needle}" ]]; then
       return 0
     fi
   done
