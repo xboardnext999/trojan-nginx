@@ -31,21 +31,25 @@ certificate_files_exist() {
   [[ -s "/etc/letsencrypt/live/${domain}/fullchain.pem" && -s "/etc/letsencrypt/live/${domain}/privkey.pem" ]]
 }
 
-certificate_valid_for_30_days() {
+certificate_valid_beyond_renew_window() {
   local domain="$1"
+  local threshold_seconds
+
   certificate_files_exist "${domain}" || return 1
-  openssl x509 -checkend 2592000 -noout -in "/etc/letsencrypt/live/${domain}/fullchain.pem" >/dev/null 2>&1
+  threshold_seconds=$((RENEW_BEFORE_DAYS * 86400))
+  openssl x509 -checkend "${threshold_seconds}" -noout -in "/etc/letsencrypt/live/${domain}/fullchain.pem" >/dev/null 2>&1
 }
 
 issue_certificate() {
   local domain="$1"
-  print_step "申请或续期证书: ${domain}"
+  print_step "检查证书是否需要续期: ${domain}"
 
-  if certificate_valid_for_30_days "${domain}"; then
-    print_success "证书有效期超过 30 天，跳过申请: ${domain}"
+  if certificate_valid_beyond_renew_window "${domain}"; then
+    print_success "证书剩余时间超过 ${RENEW_BEFORE_DAYS} 天，跳过续期: ${domain}"
     return 0
   fi
 
+  print_warn "证书剩余时间小于等于 ${RENEW_BEFORE_DAYS} 天，开始申请/续期: ${domain}"
   build_certbot_args
   certbot "${CERTBOT_ARGS[@]}" --cert-name "${domain}" -d "${domain}"
   certificate_files_exist "${domain}" || die "证书文件生成失败: ${domain}"

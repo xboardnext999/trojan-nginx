@@ -84,6 +84,10 @@ derive_config() {
   RENEW_TIMER_FILE="${RENEW_TIMER_FILE:-/etc/systemd/system/${PROJECT_NAME}-renew.timer}"
   RENEW_TIMER_CALENDAR="${RENEW_TIMER_CALENDAR:-daily}"
   RENEW_RANDOM_DELAY="${RENEW_RANDOM_DELAY:-2h}"
+  RENEW_BEFORE_DAYS="${RENEW_BEFORE_DAYS:-7}"
+  if [[ ! "${RENEW_BEFORE_DAYS}" =~ ^[0-9]+$ ]] || ((RENEW_BEFORE_DAYS < 1 || RENEW_BEFORE_DAYS > 30)); then
+    die "RENEW_BEFORE_DAYS 必须是 1-30 之间的数字"
+  fi
   LOG_DIR="${LOG_DIR:-/var/log/${PROJECT_NAME}}"
   LOGROTATE_FILE="${LOGROTATE_FILE:-/etc/logrotate.d/${PROJECT_NAME}}"
   BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/${PROJECT_NAME}}"
@@ -325,6 +329,7 @@ write_runtime_config() {
     write_env_value "RENEW_TIMER_FILE" "${RENEW_TIMER_FILE}"
     write_env_value "RENEW_TIMER_CALENDAR" "${RENEW_TIMER_CALENDAR}"
     write_env_value "RENEW_RANDOM_DELAY" "${RENEW_RANDOM_DELAY}"
+    write_env_value "RENEW_BEFORE_DAYS" "${RENEW_BEFORE_DAYS}"
     write_env_value "LOG_DIR" "${LOG_DIR}"
     write_env_value "LOGROTATE_FILE" "${LOGROTATE_FILE}"
     write_env_value "BACKUP_ROOT" "${BACKUP_ROOT}"

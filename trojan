@@ -204,11 +204,88 @@ seconds_until_text() {
   fi
 }
 
+renewal_time_text() {
+  local not_after="$1"
+  python3 - "${not_after}" "${RENEW_BEFORE_DAYS}" <<'PY'
+from datetime import datetime, timedelta, timezone
+import sys
+
+raw = " ".join(sys.argv[1].split())
+days = int(sys.argv[2])
+
+for suffix in (" GMT", " UTC"):
+    if raw.endswith(suffix):
+        raw = raw[: -len(suffix)]
+
+try:
+    expires = datetime.strptime(raw, "%b %d %H:%M:%S %Y").replace(tzinfo=timezone.utc)
+except ValueError:
+    print("未知")
+    raise SystemExit(0)
+
+renew_at = expires - timedelta(days=days)
+print(renew_at.strftime("%Y-%m-%d %H:%M:%S UTC"))
+PY
+}
+
+renewal_distance_text() {
+  local not_after="$1"
+  python3 - "${not_after}" "${RENEW_BEFORE_DAYS}" <<'PY'
+from datetime import datetime, timedelta, timezone
+import sys
+
+raw = " ".join(sys.argv[1].split())
+days = int(sys.argv[2])
+
+for suffix in (" GMT", " UTC"):
+    if raw.endswith(suffix):
+        raw = raw[: -len(suffix)]
+
+try:
+    expires = datetime.strptime(raw, "%b %d %H:%M:%S %Y").replace(tzinfo=timezone.utc)
+except ValueError:
+    print("未知")
+    raise SystemExit(0)
+
+renew_at = expires - timedelta(days=days)
+now = datetime.now(timezone.utc)
+remaining = renew_at - now
+
+if remaining.total_seconds() <= 0:
+    print("已进入续订窗口，下次自动检查会续订")
+    raise SystemExit(0)
+
+seconds = int(remaining.total_seconds())
+left_days = seconds // 86400
+left_hours = (seconds % 86400) // 3600
+left_minutes = (seconds % 3600) // 60
+
+if left_days > 0:
+    print(f"{left_days} 天 {left_hours} 小时")
+elif left_hours > 0:
+    print(f"{left_hours} 小时 {left_minutes} 分钟")
+else:
+    print(f"{left_minutes} 分钟")
+PY
+}
+
+renew_timer_status_text() {
+  local timer_unit
+  timer_unit=$(basename "${RENEW_TIMER_FILE}")
+  if systemctl is-active --quiet "${timer_unit}"; then
+    green "已开启"
+  else
+    red "未运行"
+  fi
+}
+
 show_certificate_expiry_summary() {
   local domain
   local cert_file
   local end_date
   local days_left
+  local renewal_at
+  local renewal_left
 
   print_banner "证书到期时间"
   while IFS= read -r domain; do
@@ -223,14 +300,14 @@ show_certificate_expiry_summary() {
 
     end_date=$(openssl x509 -noout -enddate -in "${cert_file}" | sed 's/^notAfter=//')
     days_left=$(cert_days_left "${end_date}")
+    renewal_at=$(renewal_time_text "${end_date}")
+    renewal_left=$(renewal_distance_text "${end_date}")
     printf '到期时间: %s\n' "$(format_datetime_text "${end_date}")"
     printf '剩余天数: %s 天\n' "${days_left}"
-
-    if openssl x509 -checkend 2592000 -noout -in "${cert_file}" >/dev/null 2>&1; then
-      print_success "状态: 正常，超过 30 天"
-    else
-      print_warn "状态: 即将过期，建议手动续期"
-    fi
+    printf '下次自动续订时间: %s\n' "${renewal_at}"
+    printf '距离下次续订: %s\n' "${renewal_left}"
+    printf '自动续订: '
+    renew_timer_status_text
     printf '\n'
   done < <(unique_domains)
 }
@@ -243,6 +320,8 @@ show_certificate_info() {
   local start_date
   local end_date
   local days_left
+  local renewal_at
+  local renewal_left
 
   while IFS= read -r domain; do
     cert_file="/etc/letsencrypt/live/${domain}/fullchain.pem"
@@ -258,16 +337,16 @@ show_certificate_info() {
     start_date=$(openssl x509 -noout -startdate -in "${cert_file}" | sed 's/^notBefore=//')
     end_date=$(openssl x509 -noout -enddate -in "${cert_file}" | sed 's/^notAfter=//')
     days_left=$(cert_days_left "${end_date}")
+    renewal_at=$(renewal_time_text "${end_date}")
+    renewal_left=$(renewal_distance_text "${end_date}")
 
     printf '生效时间: %s\n' "${start_date}"
-    printf '到期时间: %s\n' "${end_date}"
+    printf '到期时间: %s\n' "$(format_datetime_text "${end_date}")"
     printf '剩余天数: %s 天\n' "${days_left}"
-
-    if openssl x509 -checkend 2592000 -noout -in "${cert_file}" >/dev/null 2>&1; then
-      print_success "证书有效期超过 30 天"
-    else
-      print_warn "证书将在 30 天内过期，建议执行手动续期"
-    fi
+    printf '下次自动续订时间: %s\n' "${renewal_at}"
+    printf '距离下次续订: %s\n' "${renewal_left}"
+    printf '自动续订: '
+    renew_timer_status_text
     printf '\n'
   done < <(unique_domains)
 
@@ -287,6 +366,8 @@ show_renew_status() {
   next_elapse=$(systemctl show "${timer_unit}" --property=NextElapseUSecRealtime --value 2>/dev/null || true)
   last_trigger=$(systemctl show "${timer_unit}" --property=LastTriggerUSec --value 2>/dev/null || true)
 
+  printf '自动续订: '
+  renew_timer_status_text
   printf '自动续订定时器: %s\n' "${timer_unit}"
   printf '定时器状态: '
   unit_active_text "${timer_unit}"
@@ -294,11 +375,12 @@ show_renew_status() {
   unit_enabled_text "${timer_unit}"
   printf '续订服务: %s\n' "${service_unit}"
   printf '续订脚本: %s/renew.sh\n' "${INSTALL_ROOT}"
-  printf '续订频率: %s\n' "$(format_schedule_text "${RENEW_TIMER_CALENDAR}")"
+  printf '续订检测频率: %s\n' "$(format_schedule_text "${RENEW_TIMER_CALENDAR}")"
   printf '随机延迟: %s\n' "$(format_duration_text "${RENEW_RANDOM_DELAY}")"
-  printf '下次续订时间: %s\n' "$(format_datetime_text "${next_elapse}")"
-  printf '距离下次续订: %s\n' "$(seconds_until_text "${next_elapse}")"
-  printf '上次触发时间: %s\n' "$(format_datetime_text "${last_trigger}")"
+  printf '续订规则: 证书到期前 %s 天自动续订\n' "${RENEW_BEFORE_DAYS}"
+  printf '下次自动检查时间: %s\n' "$(format_datetime_text "${next_elapse}")"
+  printf '距离下次检查: %s\n' "$(seconds_until_text "${next_elapse}")"
+  printf '上次检查时间: %s\n' "$(format_datetime_text "${last_trigger}")"
   printf '\n'
   show_certificate_expiry_summary
   printf '\n'

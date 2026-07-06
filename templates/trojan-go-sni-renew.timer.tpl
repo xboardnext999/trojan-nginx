@@ -1,5 +1,5 @@
 [Unit]
-Description=Daily Trojan-Go SNI certificate renewal
+Description=Daily Trojan-Go SNI certificate renewal check
 
 [Timer]
 OnCalendar=${RENEW_TIMER_CALENDAR}
